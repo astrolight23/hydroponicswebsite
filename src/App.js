@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Camera, Upload, Download, TrendingUp, Droplets, Leaf, Home, BarChart3, Calendar, FileText, Plus } from 'lucide-react';
+import { Calendar, Upload, Download, TrendingUp, Droplets, Home, BarChart3, Leaf } from 'lucide-react';
 
 const HydroMonitor = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
@@ -15,14 +15,13 @@ const HydroMonitor = () => {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     ph: '',
-    ec: '',
-    notes: '',
-    images: []
+    tds: '',
+    temperature: ''
   });
   const [error, setError] = useState('');
   const [isVideoMaximized, setIsVideoMaximized] = useState(false);
+  const [pastDays, setPastDays] = useState(7);
 
-  const fileInputRef = useRef(null);
   const csvInputRef = useRef(null);
 
   const plantInfo = {
@@ -31,35 +30,40 @@ const HydroMonitor = () => {
       color: 'linear-gradient(135deg, #0f172a 2%, #1e3a8a 50%, #312e81 100%)',
       description: 'Nutrient-rich leafy green',
       optimalPH: '5.5-6.5',
-      optimalEC: '1.8-2.4'
+      optimalTDS: '900-1200',
+      optimalTemperature: '18-24'
     },
     'Chili': {
       image: '/assets/chili-plant.png',
       color: 'linear-gradient(135deg, #0f172a 2%, #1e3a8a 50%, #312e81 100%)',
       description: 'Spicy pepper variety',
       optimalPH: '6.0-6.8',
-      optimalEC: '2.0-3.5'
+      optimalTDS: '1000-1750',
+      optimalTemperature: '21-29'
     },
     'Purple basil': {
       image: '/assets/purple-basil.png',
       color: 'linear-gradient(135deg, #0f172a 2%, #1e3a8a 50%, #312e81 100%)',
       description: 'Aromatic purple-leafed herb',
       optimalPH: '5.5-6.5',
-      optimalEC: '1.0-1.6'
+      optimalTDS: '500-800',
+      optimalTemperature: '20-26'
     },
     'Thai basil': {
       image: '/assets/thai-basil.png',
       color: 'linear-gradient(135deg, #0f172a 2%, #1e3a8a 50%, #312e81 100%)',
       description: 'Sweet and spicy Asian herb',
       optimalPH: '6.0-7.0',
-      optimalEC: '1.2-1.8'
+      optimalTDS: '600-900',
+      optimalTemperature: '20-26'
     },
     'Lemon basil': {
       image: '/assets/lemon-basil.png',
       color: 'linear-gradient(135deg, #0f172a 2%, #1e3a8a 50%, #312e81 100%)',
       description: 'Citrusy aromatic herb',
       optimalPH: '5.8-6.8',
-      optimalEC: '1.0-1.5'
+      optimalTDS: '500-750',
+      optimalTemperature: '20-26'
     }
   };
 
@@ -185,25 +189,6 @@ const HydroMonitor = () => {
         border: '2px solid #60a5fa'
       }
     },
-    textarea: {
-      width: '100%',
-      background: 'rgba(255, 255, 255, 0.1)',
-      border: '1px solid rgba(255, 255, 255, 0.3)',
-      borderRadius: '12px',
-      padding: '12px 16px',
-      color: 'white',
-      fontSize: '16px',
-      minHeight: '96px',
-      resize: 'vertical',
-      fontFamily: 'inherit',
-      '&::placeholder': {
-        color: 'rgba(255, 255, 255, 0.5)'
-      },
-      '&:focus': {
-        outline: 'none',
-        border: '2px solid #60a5fa'
-      }
-    },
     label: {
       color: 'white',
       fontWeight: '600',
@@ -250,19 +235,6 @@ const HydroMonitor = () => {
     td: {
       padding: '12px 16px',
       borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-    },
-    imageGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
-      gap: '16px',
-      marginTop: '16px'
-    },
-    uploadedImage: {
-      width: '100%',
-      height: '80px',
-      objectFit: 'cover',
-      borderRadius: '8px',
-      border: '2px solid rgba(255, 255, 255, 0.3)'
     },
     chartContainer: {
       background: 'rgba(255, 255, 255, 0.05)',
@@ -377,39 +349,14 @@ const HydroMonitor = () => {
     }
   };
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length > 5) {
-      setError('Maximum 5 images allowed per entry.');
-      return;
-    }
-    const imagePromises = files.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.readAsDataURL(file);
-      });
-    });
-
-    Promise.all(imagePromises).then(images => {
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, ...images]
-      }));
-      setError('');
-    });
-  };
-
   const handleResetForm = () => {
     setFormData({
       date: new Date().toISOString().split('T')[0],
       ph: '',
-      ec: '',
-      notes: '',
-      images: []
+      tds: '',
+      temperature: ''
     });
     setError('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = () => {
@@ -417,25 +364,30 @@ const HydroMonitor = () => {
       setError('Please select a plant.');
       return;
     }
-    if (!formData.date || !formData.ph || !formData.ec) {
-      setError('Please fill in all required fields (Date, pH, EC).');
+    if (!formData.date || !formData.ph || !formData.tds || !formData.temperature) {
+      setError('Please fill in all required fields (Date, pH, TDS, Temperature).');
       return;
     }
     if (isNaN(formData.ph) || formData.ph < 0 || formData.ph > 14) {
       setError('pH must be a number between 0 and 14.');
       return;
     }
-    if (isNaN(formData.ec) || formData.ec < 0) {
-      setError('EC must be a positive number.');
+    if (isNaN(formData.tds) || formData.tds < 0) {
+      setError('TDS must be a positive number.');
+      return;
+    }
+    if (isNaN(formData.temperature)) {
+      setError('Temperature must be a number.');
       return;
     }
 
     const newEntry = {
-      ...formData,
       id: Date.now(),
+      timestamp: new Date().toISOString(),
+      temperature: parseFloat(formData.temperature),
       ph: parseFloat(formData.ph),
-      ec: parseFloat(formData.ec),
-      timestamp: new Date().toISOString()
+      tds: parseFloat(formData.tds),
+      date: formData.date
     };
 
     setPlantData(prev => ({
@@ -453,21 +405,19 @@ const HydroMonitor = () => {
     Object.keys(plantData).forEach(plantName => {
       plantData[plantName].forEach(entry => {
         allData.push({
-          plant: plantName,
-          date: entry.date,
+          id: entry.id,
+          timestamp: entry.timestamp,
+          temperature: entry.temperature,
           ph: entry.ph,
-          ec: entry.ec,
-          notes: entry.notes.replace(/"/g, '""'),
-          imageCount: entry.images.length,
-          timestamp: entry.timestamp
+          tds: entry.tds
         });
       });
     });
 
     const csvData = [];
-    csvData.push(['plant', 'date', 'ph', 'ec', 'notes', 'imageCount', 'timestamp']);
+    csvData.push(['id', 'timestamp', 'temperature', 'ph', 'tds']);
     allData.forEach(row => {
-      csvData.push([row.plant, row.date, row.ph, row.ec, `"${row.notes}"`, row.imageCount, row.timestamp]);
+      csvData.push([row.id, row.timestamp, row.temperature, row.ph, row.tds]);
     });
     
     const csv = csvData.map(row => row.join(',')).join('\n');
@@ -494,8 +444,8 @@ const HydroMonitor = () => {
           return;
         }
         const headers = lines[0].split(',').map(header => header.trim());
-        if (!headers.includes('plant') || !headers.includes('date') || !headers.includes('ph') || !headers.includes('ec')) {
-          setError('Invalid CSV file: Required headers (plant, date, ph, ec) missing.');
+        if (!headers.includes('id') || !headers.includes('timestamp') || !headers.includes('temperature') || !headers.includes('ph') || !headers.includes('tds')) {
+          setError('Invalid CSV file: Required headers (id, timestamp, temperature, ph, tds) missing.');
           return;
         }
 
@@ -506,34 +456,34 @@ const HydroMonitor = () => {
           'Thai basil': [], 
           'Lemon basil': [] 
         };
+        const plantName = prompt('Please enter the plant name for this CSV data (Bok choy, Chili, Purple basil, Thai basil, or Lemon basil):');
+        if (!plantName || !importedData[plantName]) {
+          setError('Invalid plant name. Please select a valid plant.');
+          return;
+        }
+
         for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(val => val.trim().replace(/^"|"$/g, ''));
-          if (values.length >= headers.length && values[0]) {
+          const values = lines[i].split(',').map(val => val.trim());
+          if (values.length >= headers.length) {
             const row = {};
             headers.forEach((header, index) => {
               row[header] = values[index] || '';
             });
-            
-            if (row.plant && importedData[row.plant]) {
-              importedData[row.plant].push({
-                id: Date.now() + Math.random(),
-                date: row.date || new Date().toISOString().split('T')[0],
-                ph: parseFloat(row.ph) || 0,
-                ec: parseFloat(row.ec) || 0,
-                notes: row.notes || '',
-                images: [],
-                timestamp: row.timestamp || new Date().toISOString()
-              });
-            }
+
+            importedData[plantName].push({
+              id: row.id || Date.now() + Math.random(),
+              timestamp: row.timestamp || new Date().toISOString(),
+              temperature: parseFloat(row.temperature) || 0,
+              ph: parseFloat(row.ph) || 0,
+              tds: parseFloat(row.tds) || 0,
+              date: row.date || new Date().toISOString().split('T')[0]
+            });
           }
         }
 
         setPlantData(prev => ({
-          'Bok choy': [...prev['Bok choy'], ...importedData['Bok choy']],
-          'Chili': [...prev['Chili'], ...importedData['Chili']],
-          'Purple basil': [...prev['Purple basil'], ...importedData['Purple basil']],
-          'Thai basil': [...prev['Thai basil'], ...importedData['Thai basil']],
-          'Lemon basil': [...prev['Lemon basil'], ...importedData['Lemon basil']]
+          ...prev,
+          [plantName]: [...prev[plantName], ...importedData[plantName]]
         }));
         setError('CSV imported successfully!');
         if (csvInputRef.current) csvInputRef.current.value = '';
@@ -556,13 +506,57 @@ const HydroMonitor = () => {
           date: entry.date,
           plant: plantName,
           ph: entry.ph,
-          ec: entry.ec,
+          tds: entry.tds,
+          temperature: entry.temperature,
           [plantName]: entry[dataType]
         });
       });
     });
     
     return chartData.sort((a, b) => new Date(a.date) - new Date(b.date));
+  };
+
+  const getTrendAnalysis = (dataType, days) => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    
+    const recentData = Object.keys(plantData)
+      .flatMap(plantName => 
+        plantData[plantName]
+          .filter(entry => new Date(entry.date) >= cutoffDate)
+          .map(entry => ({ ...entry, plantName }))
+      )
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    if (recentData.length < 2) {
+      return { trend: 'Insufficient data', slope: 0, rangeStatus: '' };
+    }
+
+    const values = recentData.map(entry => entry[dataType]);
+    const avgValue = values.reduce((sum, val) => sum + val, 0) / values.length;
+    const firstHalf = values.slice(0, Math.ceil(values.length / 2));
+    const secondHalf = values.slice(Math.floor(values.length / 2));
+    const firstAvg = firstHalf.reduce((sum, val) => sum + val, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((sum, val) => sum + val, 0) / secondHalf.length;
+
+    const slope = secondAvg - firstAvg;
+    let trend = 'Stable';
+    if (slope > 0.1) trend = 'Increasing';
+    else if (slope < -0.1) trend = 'Decreasing';
+
+    let rangeStatus = '';
+    const plantNames = [...new Set(recentData.map(entry => entry.plantName))];
+    plantNames.forEach(plantName => {
+      const optimalRange = dataType === 'ph' ? plantInfo[plantName].optimalPH :
+                          dataType === 'tds' ? plantInfo[plantName].optimalTDS :
+                          plantInfo[plantName].optimalTemperature;
+      const [min, max] = optimalRange.split('-').map(Number);
+      if (avgValue < min) rangeStatus += `${plantName}: Below optimal (${optimalRange}). `;
+      else if (avgValue > max) rangeStatus += `${plantName}: Above optimal (${optimalRange}). `;
+      else rangeStatus += `${plantName}: Within optimal (${optimalRange}). `;
+    });
+
+    return { trend, slope: slope.toFixed(2), rangeStatus };
   };
 
   if (currentPage === 'entry' && selectedPlant) {
@@ -640,75 +634,34 @@ const HydroMonitor = () => {
                 <div>
                   <label style={styles.label}>
                     <TrendingUp size={16} />
-                    EC Value (mS/cm)
+                    TDS (ppm)
                   </label>
                   <input
                     type="number"
                     step="0.1"
-                    value={formData.ec}
-                    onChange={(e) => setFormData(prev => ({...prev, ec: e.target.value}))}
+                    value={formData.tds}
+                    onChange={(e) => setFormData(prev => ({...prev, tds: e.target.value}))}
                     style={styles.input}
-                    placeholder={`Optimal: ${plantInfo[selectedPlant].optimalEC}`}
+                    placeholder={`Optimal: ${plantInfo[selectedPlant].optimalTDS}`}
                     required
                   />
                 </div>
-              </div>
 
-              <div style={{ marginBottom: '32px' }}>
-                <label style={styles.label}>
-                  <Camera size={16} />
-                  Photos
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div>
+                  <label style={styles.label}>
+                    <TrendingUp size={16} />
+                    Temperature (°C)
+                  </label>
                   <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    style={{ display: 'none' }}
+                    type="number"
+                    step="0.1"
+                    value={formData.temperature}
+                    onChange={(e) => setFormData(prev => ({...prev, temperature: e.target.value}))}
+                    style={styles.input}
+                    placeholder={`Optimal: ${plantInfo[selectedPlant].optimalTemperature}`}
+                    required
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{
-                      ...styles.button,
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-                      color: 'white'
-                    }}
-                  >
-                    <Plus size={16} />
-                    Add Photos
-                  </button>
-                  {formData.images.length > 0 && (
-                    <span style={{ color: '#bfdbfe' }}>{formData.images.length} photos selected</span>
-                  )}
                 </div>
-                {formData.images.length > 0 && (
-                  <div style={styles.imageGrid}>
-                    {formData.images.map((img, idx) => (
-                      <img
-                        key={idx}
-                        src={img}
-                        alt={`Upload ${idx + 1}`}
-                        style={styles.uploadedImage}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ marginBottom: '32px' }}>
-                <label style={styles.label}>
-                  <FileText size={16} />
-                  Notes
-                </label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({...prev, notes: e.target.value}))}
-                  style={styles.textarea}
-                  placeholder="Add any observations or notes..."
-                />
               </div>
 
               <div style={{ display: 'flex', gap: '16px' }}>
@@ -752,6 +705,20 @@ const HydroMonitor = () => {
               </button>
             </div>
 
+            <div style={{ marginBottom: '24px' }}>
+              <label style={styles.label}>
+                Analyze trends over the past
+                <input
+                  type="number"
+                  min="1"
+                  value={pastDays}
+                  onChange={(e) => setPastDays(Math.max(1, parseInt(e.target.value) || 7))}
+                  style={{ ...styles.input, width: '80px', marginLeft: '8px', marginRight: '8px' }}
+                />
+                days
+              </label>
+            </div>
+
             {getChartData('ph').length === 0 ? (
               <div style={styles.error}>No data available for analytics. Please add entries from the dashboard.</div>
             ) : (
@@ -782,15 +749,21 @@ const HydroMonitor = () => {
                       <Line type="monotone" dataKey="Lemon basil" stroke="#eab308" strokeWidth={3} dot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
+                  <div style={{ color: '#bfdbfe', marginTop: '16px', fontSize: '0.9rem' }}>
+                    <strong>Significance:</strong> pH affects nutrient availability in hydroponics. Most plants thrive within a pH range of 5.5–7.0. Values too low (acidic) can cause nutrient lockout, while values too high (alkaline) may reduce micronutrient uptake. Optimal ranges vary by plant (e.g., Bok choy: 5.5–6.5, Chili: 6.0–6.8).
+                  </div>
+                  <div style={{ color: '#bfdbfe', marginTop: '8px', fontSize: '0.9rem' }}>
+                    <strong>Trend (past {pastDays} days):</strong> {getTrendAnalysis('ph', pastDays).trend} (Change: {getTrendAnalysis('ph', pastDays).slope}). {getTrendAnalysis('ph', pastDays).rangeStatus}
+                  </div>
                 </div>
 
                 <div style={styles.chartContainer}>
                   <h2 style={styles.chartTitle}>
                     <TrendingUp size={24} color="#34d399" />
-                    EC Trends
+                    TDS Trends
                   </h2>
                   <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={getChartData('ec')}>
+                    <LineChart data={getChartData('tds')}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <XAxis dataKey="date" stroke="#94a3b8" />
                       <YAxis stroke="#94a3b8" domain={[0, 'auto']} />
@@ -810,6 +783,46 @@ const HydroMonitor = () => {
                       <Line type="monotone" dataKey="Lemon basil" stroke="#eab308" strokeWidth={3} dot={{ r: 6 }} />
                     </LineChart>
                   </ResponsiveContainer>
+                  <div style={{ color: '#bfdbfe', marginTop: '16px', fontSize: '0.9rem' }}>
+                    <strong>Significance:</strong> TDS (Total Dissolved Solids) measures nutrient concentration in ppm. Higher TDS supports vigorous growth for nutrient-hungry plants like Chili (1000–1750 ppm), while lower TDS suits herbs like basil (500–900 ppm). Excessive TDS can cause nutrient burn, while too low TDS may lead to deficiencies.
+                  </div>
+                  <div style={{ color: '#bfdbfe', marginTop: '8px', fontSize: '0.9rem' }}>
+                    <strong>Trend (past {pastDays} days):</strong> {getTrendAnalysis('tds', pastDays).trend} (Change: {getTrendAnalysis('tds', pastDays).slope}). {getTrendAnalysis('tds', pastDays).rangeStatus}
+                  </div>
+                </div>
+
+                <div style={styles.chartContainer}>
+                  <h2 style={styles.chartTitle}>
+                    <TrendingUp size={24} color="#f59e0b" />
+                    Temperature Trends
+                  </h2>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={getChartData('temperature')}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis dataKey="date" stroke="#94a3b8" />
+                      <YAxis stroke="#94a3b8" domain={[0, 'auto']} />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0,0,0,0.8)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: 'white'
+                        }}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="Bok choy" stroke="#10b981" strokeWidth={3} dot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="Chili" stroke="#f59e0b" strokeWidth={3} dot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="Purple basil" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="Thai basil" stroke="#059669" strokeWidth={3} dot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="Lemon basil" stroke="#eab308" strokeWidth={3} dot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div style={{ color: '#bfdbfe', marginTop: '16px', fontSize: '0.9rem' }}>
+                    <strong>Significance:</strong> Temperature affects plant metabolism and nutrient uptake. Most hydroponic plants prefer 18–26°C. Higher temperatures (e.g., Chili: 21–29°C) can boost growth if nutrients are balanced, but excessive heat stresses plants. Low temperatures slow growth and nutrient absorption.
+                  </div>
+                  <div style={{ color: '#bfdbfe', marginTop: '8px', fontSize: '0.9rem' }}>
+                    <strong>Trend (past {pastDays} days):</strong> {getTrendAnalysis('temperature', pastDays).trend} (Change: {getTrendAnalysis('temperature', pastDays).slope}). {getTrendAnalysis('temperature', pastDays).rangeStatus}
+                  </div>
                 </div>
               </div>
             )}
@@ -818,7 +831,8 @@ const HydroMonitor = () => {
               {Object.keys(plantData).map(plantName => {
                 const entries = plantData[plantName];
                 const avgPH = entries.length > 0 ? (entries.reduce((sum, entry) => sum + entry.ph, 0) / entries.length).toFixed(1) : 'N/A';
-                const avgEC = entries.length > 0 ? (entries.reduce((sum, entry) => sum + entry.ec, 0) / entries.length).toFixed(1) : 'N/A';
+                const avgTDS = entries.length > 0 ? (entries.reduce((sum, entry) => sum + entry.tds, 0) / entries.length).toFixed(1) : 'N/A';
+                const avgTemperature = entries.length > 0 ? (entries.reduce((sum, entry) => sum + entry.temperature, 0) / entries.length).toFixed(1) : 'N/A';
                 
                 return (
                   <div key={plantName} style={{ ...styles.statsCard, background: plantInfo[plantName].color }}>
@@ -846,8 +860,12 @@ const HydroMonitor = () => {
                         <span style={{ fontWeight: '600' }}>{avgPH}</span>
                       </div>
                       <div style={styles.statItem}>
-                        <span>Avg EC:</span>
-                        <span style={{ fontWeight: '600' }}>{avgEC}</span>
+                        <span>Avg TDS:</span>
+                        <span style={{ fontWeight: '600' }}>{avgTDS}</span>
+                      </div>
+                      <div style={styles.statItem}>
+                        <span>Avg Temperature:</span>
+                        <span style={{ fontWeight: '600' }}>{avgTemperature}</span>
                       </div>
                     </div>
                   </div>
@@ -958,7 +976,8 @@ const HydroMonitor = () => {
                 <div style={styles.plantStats}>
                   <div style={{ fontSize: '0.875rem', color: 'rgba(255, 255, 255, 0.9)' }}>
                     <p style={{ margin: '4px 0' }}><strong>Optimal pH:</strong> {plantInfo[plantName].optimalPH}</p>
-                    <p style={{ margin: '4px 0' }}><strong>Optimal EC:</strong> {plantInfo[plantName].optimalEC}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Optimal TDS:</strong> {plantInfo[plantName].optimalTDS}</p>
+                    <p style={{ margin: '4px 0' }}><strong>Optimal Temperature:</strong> {plantInfo[plantName].optimalTemperature}</p>
                     <p style={{ margin: '4px 0' }}><strong>Entries:</strong> {plantData[plantName].length}</p>
                   </div>
                 </div>
@@ -980,11 +999,11 @@ const HydroMonitor = () => {
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
                     <th style={styles.th}>Plant</th>
-                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>ID</th>
+                    <th style={styles.th}>Timestamp</th>
+                    <th style={styles.th}>Temperature</th>
                     <th style={styles.th}>pH</th>
-                    <th style={styles.th}>EC</th>
-                    <th style={styles.th}>Notes</th>
-                    <th style={styles.th}>Photos</th>
+                    <th style={styles.th}>TDS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1010,11 +1029,11 @@ const HydroMonitor = () => {
                           </span>
                           {entry.plantName}
                         </td>
-                        <td style={styles.td}>{entry.date}</td>
+                        <td style={styles.td}>{entry.id}</td>
+                        <td style={styles.td}>{entry.timestamp}</td>
+                        <td style={styles.td}>{entry.temperature}</td>
                         <td style={styles.td}>{entry.ph}</td>
-                        <td style={styles.td}>{entry.ec}</td>
-                        <td style={styles.td}>{entry.notes.substring(0, 50)}{entry.notes.length > 50 ? '...' : ''}</td>
-                        <td style={styles.td}>{entry.images.length} photos</td>
+                        <td style={styles.td}>{entry.tds}</td>
                       </tr>
                     ))
                   }
