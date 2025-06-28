@@ -152,9 +152,9 @@ const HydroMonitor = () => {
 
   // Initial data fetch
   useEffect(() => {
-    fetchCSV();
-    fetchAlerts();
-  }, []);
+  fetchCSV();
+  fetchAlerts();
+}, [fetchCSV, fetchAlerts]);
 
   const isImagePath = (image) => {
     return typeof image === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(image);
