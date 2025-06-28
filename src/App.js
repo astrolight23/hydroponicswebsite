@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Calendar, Upload, Download, TrendingUp, Droplets, Home, BarChart3, Leaf } from 'lucide-react';
+import { Calendar, Upload, Download, TrendingUp, Droplets, Home, BarChart3, Leaf, AlertTriangle } from 'lucide-react';
 
 const HydroMonitor = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
@@ -21,7 +21,8 @@ const HydroMonitor = () => {
   const [error, setError] = useState('');
   const [isVideoMaximized, setIsVideoMaximized] = useState(false);
   const [pastDays, setPastDays] = useState(7);
-
+  const [alerts, setAlerts] = useState([]);
+  const [highlightTabs, setHighlightTabs] = useState({ temperature: false, ph: false, tds: false });
   const csvInputRef = useRef(null);
 
   const plantInfo = {
@@ -66,6 +67,94 @@ const HydroMonitor = () => {
       optimalTemperature: '20-26'
     }
   };
+
+  // Optimal ranges for Chili
+  const ranges = {
+    temperature: { min: 21, max: 29 },
+    ph: { min: 6.0, max: 6.8 },
+    tds: { min: 1000, max: 1750 }
+  };
+
+  // Fetch and parse CSV
+  const fetchCSV = async () => {
+    try {
+      const response = await fetch('/sensor_data_may.csv');
+      const text = await response.text();
+      const rows = text.split('\n').slice(1); // Skip header
+      const data = rows.map(row => {
+        const [id, timestamp, temperature, ph, tds, humidity] = row.split(',');
+        return {
+          id: parseInt(id),
+          timestamp,
+          temperature: parseFloat(temperature),
+          ph: parseFloat(ph),
+          tds: parseFloat(tds),
+          humidity: parseFloat(humidity),
+          date: timestamp.split(' ')[0]
+        };
+      }).filter(row => !isNaN(row.temperature) && !isNaN(row.ph) && !isNaN(row.tds));
+      setPlantData(prev => ({ ...prev, 'Chili': data }));
+    } catch (error) {
+      setError('Failed to load CSV data');
+      console.error(error);
+    }
+  };
+
+  // Fetch alerts from JSON
+  const fetchAlerts = async () => {
+    try {
+      const response = await fetch('/sensor_alerts_messages.json');
+      const data = await response.json();
+      setAlerts(data);
+      updateTabHighlights(data);
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+      setError('Failed to load alerts');
+      generateAlertsFromCSV();
+    }
+  };
+
+  // Generate alerts from CSV if JSON is empty
+  const generateAlertsFromCSV = () => {
+    const chiliData = plantData['Chili'];
+    const newAlerts = [];
+    const highlights = { temperature: false, ph: false, tds: false };
+
+    chiliData.forEach(row => {
+      if (row.temperature < ranges.temperature.min || row.temperature > ranges.temperature.max) {
+        highlights.temperature = true;
+        newAlerts.push(`Temperature out of range at ${row.timestamp}: ${row.temperature}°C`);
+      }
+      if (row.ph < ranges.ph.min || row.ph > ranges.ph.max) {
+        highlights.ph = true;
+        newAlerts.push(`pH out of range at ${row.timestamp}: ${row.ph}`);
+      }
+      if (row.tds < ranges.tds.min || row.tds > ranges.tds.max) {
+        highlights.tds = true;
+        newAlerts.push(`TDS out of range at ${row.timestamp}: ${row.tds} ppm`);
+      }
+    });
+
+    setAlerts(newAlerts);
+    setHighlightTabs(highlights);
+  };
+
+  // Update tab highlights based on alerts
+  const updateTabHighlights = (alertsData) => {
+    const highlights = { temperature: false, ph: false, tds: false };
+    alertsData.forEach(message => {
+      if (message.toLowerCase().includes('temperature')) highlights.temperature = true;
+      if (message.toLowerCase().includes('ph')) highlights.ph = true;
+      if (message.toLowerCase().includes('tds')) highlights.tds = true;
+    });
+    setHighlightTabs(highlights);
+  };
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchCSV();
+    fetchAlerts();
+  }, []);
 
   const isImagePath = (image) => {
     return typeof image === 'string' && /\.(jpg|jpeg|png|gif|webp)$/i.test(image);
@@ -346,6 +435,47 @@ const HydroMonitor = () => {
       width: '100',
       height: '100%',
       objectFit: 'cover'
+    },
+    tabs: {
+      display: 'flex',
+      gap: '16px',
+      marginBottom: '24px'
+    },
+    tabButton: {
+      padding: '10px 20px',
+      borderRadius: '12px',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      background: 'rgba(255, 255, 255, 0.1)',
+      color: 'white',
+      fontWeight: '600',
+      cursor: 'pointer',
+      transition: 'all 0.3s ease',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    },
+    tabButtonActive: {
+      border: '2px solid #f87171',
+      background: 'rgba(248, 113, 113, 0.2)'
+    },
+    alertsSection: {
+      marginTop: '24px',
+      padding: '16px',
+      borderRadius: '12px',
+      background: 'rgba(255, 255, 255, 0.05)'
+    },
+    alertsList: {
+      listStyleType: 'none',
+      padding: 0,
+      margin: 0
+    },
+    alertItem: {
+      padding: '12px',
+      marginBottom: '8px',
+      borderLeft: '4px solid #f87171',
+      background: 'rgba(248, 113, 113, 0.1)',
+      color: 'white',
+      borderRadius: '4px'
     }
   };
 
@@ -456,9 +586,9 @@ const HydroMonitor = () => {
           'Thai basil': [], 
           'Lemon basil': [] 
         };
-        const plantName = prompt('Please enter the plant name for this CSV data (Bok choy, Chili, Purple basil, Thai basil, or Lemon basil):');
+        const plantName = 'Chili'; // Hardcode to Chili for this task
         if (!plantName || !importedData[plantName]) {
-          setError('Invalid plant name. Please select a valid plant.');
+          setError('Invalid plant name.');
           return;
         }
 
@@ -476,7 +606,7 @@ const HydroMonitor = () => {
               temperature: parseFloat(row.temperature) || 0,
               ph: parseFloat(row.ph) || 0,
               tds: parseFloat(row.tds) || 0,
-              date: row.date || new Date().toISOString().split('T')[0]
+              date: row.date || row.timestamp.split(' ')[0]
             });
           }
         }
@@ -487,6 +617,7 @@ const HydroMonitor = () => {
         }));
         setError('CSV imported successfully!');
         if (csvInputRef.current) csvInputRef.current.value = '';
+        fetchAlerts(); // Refresh alerts after import
       } catch (err) {
         setError('Error importing CSV: Please ensure the file is valid.');
       }
@@ -519,55 +650,6 @@ const HydroMonitor = () => {
   const getTrendAnalysis = (dataType, days) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
-    const fetchAlerts = async () => {
-    try {
-      const response = await fetch('/sensor_alerts_messages.json');
-      const data = await response.json();
-      setAlerts(data);
-      updateTabHighlights(data);
-    } catch (error) {
-      console.error('Error fetching alerts:', error);
-      setError('Failed to load alerts');
-      // Generate alerts from CSV if JSON fails
-      generateAlertsFromCSV();
-    }
-  };
-
-  // Generate alerts from CSV if JSON is empty
-  const generateAlertsFromCSV = () => {
-    const chiliData = plantData['Chili'];
-    const newAlerts = [];
-    const highlights = { temperature: false, ph: false, tds: false };
-
-    chiliData.forEach(row => {
-      if (row.temperature < ranges.temperature.min || row.temperature > ranges.temperature.max) {
-        highlights.temperature = true;
-        newAlerts.push(`Temperature out of range at ${row.timestamp}: ${row.temperature}°C`);
-      }
-      if (row.ph < ranges.ph.min || row.ph > ranges.ph.max) {
-        highlights.ph = true;
-        newAlerts.push(`pH out of range at ${row.timestamp}: ${row.ph}`);
-      }
-      if (row.tds < ranges.tds.min || row.tds > ranges.tds.max) {
-        highlights.tds = true;
-        newAlerts.push(`TDS out of range at ${row.timestamp}: ${row.tds} ppm`);
-      }
-    });
-
-    setAlerts(newAlerts);
-    setHighlightTabs(highlights);
-  };
-
-  // Update tab highlights based on alerts
-  const updateTabHighlights = (alertsData) => {
-    const highlights = { temperature: false, ph: false, tds: false };
-    alertsData.forEach(message => {
-      if (message.toLowerCase().includes('temperature')) highlights.temperature = true;
-      if (message.toLowerCase().includes('ph')) highlights.ph = true;
-      if (message.toLowerCase().includes('tds')) highlights.tds = true;
-    });
-    setHighlightTabs(highlights);
-  };
     
     const recentData = Object.keys(plantData)
       .flatMap(plantName => 
@@ -607,6 +689,105 @@ const HydroMonitor = () => {
 
     return { trend, slope: slope.toFixed(2), rangeStatus };
   };
+
+  // Monitoring Page
+  const renderMonitoringPage = () => (
+    <div style={styles.pageContainer}>
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={styles.flexBetween}>
+            <h1 style={styles.pageTitle}>
+              <BarChart3 size={32} />
+              Monitoring - Chili
+            </h1>
+            <button
+              onClick={() => setCurrentPage('dashboard')}
+              style={{ ...styles.button, ...styles.primaryButton }}
+            >
+              <Home size={20} />
+            </button>
+          </div>
+
+          <div style={styles.tabs}>
+            <button
+              style={{
+                ...styles.tabButton,
+                ...(highlightTabs.temperature ? styles.tabButtonActive : {})
+              }}
+            >
+              <TrendingUp size={16} />
+              Temperature
+            </button>
+            <button
+              style={{
+                ...styles.tabButton,
+                ...(highlightTabs.ph ? styles.tabButtonActive : {})
+              }}
+            >
+              <Droplets size={16} />
+              pH
+            </button>
+            <button
+              style={{
+                ...styles.tabButton,
+                ...(highlightTabs.tds ? styles.tabButtonActive : {})
+              }}
+            >
+              <TrendingUp size={16} />
+              TDS
+            </button>
+          </div>
+
+          <div style={styles.alertsSection}>
+            <h2 style={{ ...styles.chartTitle, marginBottom: '16px' }}>
+              <AlertTriangle size={24} color="#f87171" />
+              Alerts
+            </h2>
+            {error && <div style={styles.error}>{error}</div>}
+            <ul style={styles.alertsList}>
+              {alerts.length === 0 ? (
+                <li style={styles.alertItem}>No alerts at this time.</li>
+              ) : (
+                alerts.map((alert, index) => (
+                  <li key={index} style={styles.alertItem}>{alert}</li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          <div style={styles.chartContainer}>
+            <h2 style={styles.chartTitle}>
+              <BarChart3 size={24} color="#60a5fa" />
+              Sensor Data (Chili)
+            </h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={plantData['Chili'].slice(-pastDays)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="timestamp" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white'
+                  }}
+                />
+                <Legend />
+                <Line type="monotone" dataKey="temperature" stroke="#f59e0b" strokeWidth={3} name="Temperature (°C)" />
+                <Line type="monotone" dataKey="ph" stroke="#10b981" strokeWidth={3} name="pH" />
+                <Line type="monotone" dataKey="tds" stroke="#8b5cf6" strokeWidth={3} name="TDS (ppm)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (currentPage === 'monitoring') {
+    return renderMonitoringPage();
+  }
 
   if (currentPage === 'entry' && selectedPlant) {
     return (
@@ -699,7 +880,7 @@ const HydroMonitor = () => {
                 <div>
                   <label style={styles.label}>
                     <TrendingUp size={16} />
-                    Temperature (°C)
+                    Temperature (Â°C)
                   </label>
                   <input
                     type="number"
@@ -799,7 +980,7 @@ const HydroMonitor = () => {
                     </LineChart>
                   </ResponsiveContainer>
                   <div style={{ color: '#bfdbfe', marginTop: '16px', fontSize: '0.9rem' }}>
-                    <strong>Significance:</strong> pH affects nutrient availability in hydroponics. Most plants thrive within a pH range of 5.5–7.0. Values too low (acidic) can cause nutrient lockout, while values too high (alkaline) may reduce micronutrient uptake. Optimal ranges vary by plant (e.g., Bok choy: 5.5–6.5, Chili: 6.0–6.8).
+                    <strong>Significance:</strong> pH affects nutrient availability in hydroponics. Most plants thrive within a pH range of 5.5â��7.0. Values too low (acidic) can cause nutrient lockout, while values too high (alkaline) may reduce micronutrient uptake. Optimal ranges vary by plant (e.g., Bok choy: 5.5â��6.5, Chili: 6.0â��6.8).
                   </div>
                   <div style={{ color: '#bfdbfe', marginTop: '8px', fontSize: '0.9rem' }}>
                     <strong>Trend (past {pastDays} days):</strong> {getTrendAnalysis('ph', pastDays).trend} (Change: {getTrendAnalysis('ph', pastDays).slope}). {getTrendAnalysis('ph', pastDays).rangeStatus}
@@ -833,7 +1014,7 @@ const HydroMonitor = () => {
                     </LineChart>
                   </ResponsiveContainer>
                   <div style={{ color: '#bfdbfe', marginTop: '16px', fontSize: '0.9rem' }}>
-                    <strong>Significance:</strong> TDS (Total Dissolved Solids) measures nutrient concentration in ppm. Higher TDS supports vigorous growth for nutrient-hungry plants like Chili (1000–1750 ppm), while lower TDS suits herbs like basil (500–900 ppm). Excessive TDS can cause nutrient burn, while too low TDS may lead to deficiencies.
+                    <strong>Significance:</strong> TDS (Total Dissolved Solids) measures nutrient concentration in ppm. Higher TDS supports vigorous growth for nutrient-hungry plants like Chili (1000â��1750 ppm), while lower TDS suits herbs like basil (500â��900 ppm). Excessive TDS can cause nutrient burn, while too low TDS may lead to deficiencies.
                   </div>
                   <div style={{ color: '#bfdbfe', marginTop: '8px', fontSize: '0.9rem' }}>
                     <strong>Trend (past {pastDays} days):</strong> {getTrendAnalysis('tds', pastDays).trend} (Change: {getTrendAnalysis('tds', pastDays).slope}). {getTrendAnalysis('tds', pastDays).rangeStatus}
@@ -867,7 +1048,7 @@ const HydroMonitor = () => {
                     </LineChart>
                   </ResponsiveContainer>
                   <div style={{ color: '#bfdbfe', marginTop: '16px', fontSize: '0.9rem' }}>
-                    <strong>Significance:</strong> Temperature affects plant metabolism and nutrient uptake. Most hydroponic plants prefer 18–26°C. Higher temperatures (e.g., Chili: 21–29°C) can boost growth if nutrients are balanced, but excessive heat stresses plants. Low temperatures slow growth and nutrient absorption.
+                    <strong>Significance:</strong> Temperature affects plant metabolism and nutrient uptake. Most hydroponic plants prefer 18â��26Â°C. Higher temperatures (e.g., Chili: 21â��29Â°C) can boost growth if nutrients are balanced, but excessive heat stresses plants. Low temperatures slow growth and nutrient absorption.
                   </div>
                   <div style={{ color: '#bfdbfe', marginTop: '8px', fontSize: '0.9rem' }}>
                     <strong>Trend (past {pastDays} days):</strong> {getTrendAnalysis('temperature', pastDays).trend} (Change: {getTrendAnalysis('temperature', pastDays).slope}). {getTrendAnalysis('temperature', pastDays).rangeStatus}
@@ -957,6 +1138,16 @@ const HydroMonitor = () => {
             >
               <BarChart3 size={16} />
               Analytics
+            </button>
+            <button
+              onClick={() => setCurrentPage('monitoring')}
+              style={{
+                ...styles.button,
+                ...(currentPage === 'monitoring' ? styles.activeButton : styles.primaryButton)
+              }}
+            >
+              <BarChart3 size={16} />
+              Monitoring
             </button>
             <button
               onClick={exportToCSV}
