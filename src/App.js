@@ -519,6 +519,55 @@ const HydroMonitor = () => {
   const getTrendAnalysis = (dataType, days) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
+    const fetchAlerts = async () => {
+    try {
+      const response = await fetch('/sensor_alerts_messages.json');
+      const data = await response.json();
+      setAlerts(data);
+      updateTabHighlights(data);
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+      setError('Failed to load alerts');
+      // Generate alerts from CSV if JSON fails
+      generateAlertsFromCSV();
+    }
+  };
+
+  // Generate alerts from CSV if JSON is empty
+  const generateAlertsFromCSV = () => {
+    const chiliData = plantData['Chili'];
+    const newAlerts = [];
+    const highlights = { temperature: false, ph: false, tds: false };
+
+    chiliData.forEach(row => {
+      if (row.temperature < ranges.temperature.min || row.temperature > ranges.temperature.max) {
+        highlights.temperature = true;
+        newAlerts.push(`Temperature out of range at ${row.timestamp}: ${row.temperature}°C`);
+      }
+      if (row.ph < ranges.ph.min || row.ph > ranges.ph.max) {
+        highlights.ph = true;
+        newAlerts.push(`pH out of range at ${row.timestamp}: ${row.ph}`);
+      }
+      if (row.tds < ranges.tds.min || row.tds > ranges.tds.max) {
+        highlights.tds = true;
+        newAlerts.push(`TDS out of range at ${row.timestamp}: ${row.tds} ppm`);
+      }
+    });
+
+    setAlerts(newAlerts);
+    setHighlightTabs(highlights);
+  };
+
+  // Update tab highlights based on alerts
+  const updateTabHighlights = (alertsData) => {
+    const highlights = { temperature: false, ph: false, tds: false };
+    alertsData.forEach(message => {
+      if (message.toLowerCase().includes('temperature')) highlights.temperature = true;
+      if (message.toLowerCase().includes('ph')) highlights.ph = true;
+      if (message.toLowerCase().includes('tds')) highlights.tds = true;
+    });
+    setHighlightTabs(highlights);
+  };
     
     const recentData = Object.keys(plantData)
       .flatMap(plantName => 
